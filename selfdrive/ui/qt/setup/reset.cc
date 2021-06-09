@@ -1,22 +1,29 @@
-#include <QLabel>
-#include <QWidget>
-#include <QPushButton>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
 #include <QApplication>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <QWidget>
 
-#include "qt_window.hpp"
+#include "selfdrive/ui/qt/qt_window.h"
 
 #define USERDATA "/dev/disk/by-partlabel/userdata"
 #define NVME "/dev/nvme0n1"
 
+bool do_reset() {
+  std::vector<const char*> cmds = {
+    "sudo umount " NVME,
+    "yes | sudo mkfs.ext4 " NVME,
+    "sudo umount " USERDATA,
+    "yes | sudo mkfs.ext4 " USERDATA,
+    "sudo reboot",
+  };
 
-void do_reset() {
-  std::system("sudo umount " NVME);
-  std::system("yes | sudo mkfs.ext4 " NVME);
-  std::system("sudo umount " USERDATA);
-  std::system("yes | sudo mkfs.ext4 " USERDATA);
-  std::system("sudo reboot");
+  for (auto &cmd : cmds) {
+    int ret = std::system(cmd);
+    if (ret != 0) return false;
+  }
+  return true;
 }
 
 int main(int argc, char *argv[]) {
@@ -44,7 +51,7 @@ int main(int argc, char *argv[]) {
 
   QPushButton *cancel_btn = new QPushButton("Cancel");
   btn_layout->addWidget(cancel_btn, 0, Qt::AlignLeft);
-  QObject::connect(cancel_btn, SIGNAL(released()), &a, SLOT(quit()));
+  QObject::connect(cancel_btn, &QPushButton::released, &a, &QApplication::quit);
 
   QPushButton *confirm_btn  = new QPushButton("Confirm");
   btn_layout->addWidget(confirm_btn, 0, Qt::AlignRight);
@@ -58,7 +65,11 @@ int main(int argc, char *argv[]) {
       confirm_btn->hide();
       QCoreApplication::processEvents(QEventLoop::AllEvents, 1000);
 #ifdef __aarch64__
-      do_reset();
+      bool ret = do_reset();
+      if (!ret) {
+        body->setText("Reset failed.");
+        cancel_btn->show();
+      }
 #endif
     }
   });

@@ -1,21 +1,25 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <curl/curl.h>
+#include "selfdrive/ui/qt/setup/setup.h"
 
+#include <cstdio>
+#include <cstdlib>
+
+#include <QApplication>
 #include <QLabel>
 #include <QVBoxLayout>
-#include <QApplication>
 
-#include "setup.hpp"
-#include "offroad/networking.hpp"
-#include "widgets/input.hpp"
-#include "qt_window.hpp"
+#include <curl/curl.h>
+
+#include "selfdrive/hardware/hw.h"
+
+#include "selfdrive/ui/qt/offroad/networking.h"
+#include "selfdrive/ui/qt/widgets/input.h"
+#include "selfdrive/ui/qt/qt_window.h"
 
 #define USER_AGENT "AGNOSSetup-0.1"
 
 void Setup::download(QString url) {
-  setCurrentIndex(count() - 2);
   QCoreApplication::processEvents(QEventLoop::AllEvents, 1000);
+  setCurrentIndex(count() - 2);
 
   CURL *curl = curl_easy_init();
   if (!curl) {
@@ -53,22 +57,24 @@ QLabel * title_label(QString text) {
 
 QWidget * Setup::build_page(QString title, QWidget *content, bool next, bool prev) {
   QVBoxLayout *main_layout = new QVBoxLayout();
-  main_layout->setContentsMargins(50, 50, 50, 50);
+  main_layout->setMargin(50);
   main_layout->addWidget(title_label(title), 0, Qt::AlignLeft | Qt::AlignTop);
 
   main_layout->addWidget(content);
 
   QHBoxLayout *nav_layout = new QHBoxLayout();
 
-  QPushButton *back_btn = new QPushButton("Back");
-  nav_layout->addWidget(back_btn, 0, Qt::AlignBottom | Qt::AlignLeft);
-  QObject::connect(back_btn, SIGNAL(released()), this, SLOT(prevPage()));
-  back_btn->setVisible(prev);
+  if (prev) {
+    QPushButton *back_btn = new QPushButton("Back");
+    nav_layout->addWidget(back_btn, 1, Qt::AlignBottom | Qt::AlignLeft);
+    QObject::connect(back_btn, &QPushButton::released, this, &Setup::prevPage);
+  }
 
-  QPushButton *continue_btn = new QPushButton("Continue");
-  nav_layout->addWidget(continue_btn, 0, Qt::AlignBottom | Qt::AlignRight);
-  QObject::connect(continue_btn, SIGNAL(released()), this, SLOT(nextPage()));
-  continue_btn->setVisible(next);
+  if (next) {
+    QPushButton *continue_btn = new QPushButton("Continue");
+    nav_layout->addWidget(continue_btn, 0, Qt::AlignBottom | Qt::AlignRight);
+    QObject::connect(continue_btn, &QPushButton::released, this, &Setup::nextPage);
+  }
 
   main_layout->addLayout(nav_layout, 0);
 
@@ -139,9 +145,9 @@ QWidget * Setup::download_failed() {
   QPushButton *reboot_btn = new QPushButton("Reboot");
   nav_layout->addWidget(reboot_btn, 0, Qt::AlignBottom | Qt::AlignLeft);
   QObject::connect(reboot_btn, &QPushButton::released, this, [=]() {
-#ifdef QCOM2
-    std::system("sudo reboot");
-#endif
+    if (Hardware::TICI()) {
+      std::system("sudo reboot");
+    }
   });
 
   QPushButton *restart_btn = new QPushButton("Start over");
@@ -165,14 +171,14 @@ void Setup::nextPage() {
   setCurrentIndex(currentIndex() + 1);
 }
 
-Setup::Setup(QWidget *parent) {
+Setup::Setup(QWidget *parent) : QStackedWidget(parent) {
   addWidget(getting_started());
   addWidget(network_setup());
   addWidget(software_selection());
   addWidget(downloading());
   addWidget(download_failed());
 
-  QObject::connect(this, SIGNAL(downloadFailed()), this, SLOT(nextPage()));
+  QObject::connect(this, &Setup::downloadFailed, this, &Setup::nextPage);
 
   setStyleSheet(R"(
     * {
